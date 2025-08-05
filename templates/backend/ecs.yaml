@@ -1,0 +1,374 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ECS resources for the application'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: 'Name of the project - used for resource naming'
+    
+  Environment:
+    Type: String
+    Description: 'Environment name (dev, staging, prod)'
+    Default: 'dev'
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+      
+  ContainerImage:
+    Type: String
+    Description: 'Container image for ECS service'
+  
+  ContainerPort:
+    Type: Number
+    Description: 'Port exposed by the container'
+    Default: 80
+  
+  DesiredCount:
+    Type: Number
+    Description: 'Desired number of ECS tasks'
+    Default: 2
+    
+  PublicSubnet1Id:
+    Type: String
+    Description: 'Public subnet 1 ID'
+    
+  PublicSubnet2Id:
+    Type: String
+    Description: 'Public subnet 2 ID'
+    
+  EcsSecurityGroupId:
+    Type: String
+    Description: 'Security Group ID for ECS'
+    
+  AlbSecurityGroupId:
+    Type: String
+    Description: 'Security Group ID for ALB'
+    
+  VpcId:
+    Type: String
+    Description: 'VPC ID'
+    
+  DatabaseEndpoint:
+    Type: String
+    Description: 'Database endpoint address'
+    
+  DatabasePort:
+    Type: String
+    Description: 'Database port'
+    
+  DatabaseName:
+    Type: String
+    Description: 'Database name'
+    
+  DatabaseUsername:
+    Type: String
+    Description: 'Database username'
+    
+  DatabasePassword:
+    Type: String
+    Description: 'Database password'
+    NoEcho: true
+
+Conditions:
+  IsProductionEnvironment: !Equals [!Ref Environment, 'prod']
+
+Resources:
+  # ECS Cluster
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    DependsOn: EcsTaskExecutionRole
+    Properties:
+      ClusterName: !Sub "${ProjectName}-${Environment}-cluster"
+      CapacityProviders:
+        - FARGATE
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE
+          Weight: 1
+      ServiceConnectDefaults:
+        Namespace: !Sub "${ProjectName}-${Environment}"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-cluster"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ECS Task Execution Role
+  EcsTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-task-execution-role"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ECS Task Role
+  EcsTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-task-role"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # CloudWatch Logs Group
+  EcsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/${ProjectName}-${Environment}"
+      RetentionInDays: 7
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-logs"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Secrets Manager Secret for Session
+  SessionSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-session-secret"
+      Description: "Session secret for Keystone.js Admin UI"
+      GenerateSecretString:
+        PasswordLength: 32
+        ExcludeCharacters: '"@/\\'
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-session-secret"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+          
+  EcsTaskRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "${ProjectName}-${Environment}-secrets-policy"
+      Roles:
+        - !Ref EcsTaskRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+            Resource:
+              - !Ref SessionSecret
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Sub "arn:aws:s3:::${ProjectName}-${Environment}-keystonejs"
+              - !Sub "arn:aws:s3:::${ProjectName}-${Environment}-keystonejs/*"
+
+  EcsTaskExecutionRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub "${ProjectName}-${Environment}-execution-secrets-policy"
+      Roles:
+        - !Ref EcsTaskExecutionRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+            Resource:
+              - !Ref SessionSecret
+
+  # ECS Task Definition
+  EcsTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ProjectName}-${Environment}-task"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '4096'
+      Memory: '8192'
+      ExecutionRoleArn: !Ref EcsTaskExecutionRole
+      TaskRoleArn: !Ref EcsTaskRole
+      ContainerDefinitions:
+        - Name: !Sub "${ProjectName}-${Environment}-container"
+          Image: !Ref ContainerImage
+          Essential: true
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+              HostPort: !Ref ContainerPort
+              Protocol: tcp
+          Environment:
+            - Name: NODE_ENV
+              Value: !If [IsProductionEnvironment, "production", "development"]
+            - Name: DATABASE_URL
+              Value: !Sub "mysql://${DatabaseUsername}:${DatabasePassword}@${DatabaseEndpoint}:${DatabasePort}/${DatabaseName}"
+            - Name: PORT
+              Value: !Ref ContainerPort
+            - Name: S3_BUCKET_NAME
+              Value: !Sub "${ProjectName}-${Environment}-keystonejs"
+            - Name: S3_REGION
+              Value: !Ref AWS::Region
+          Secrets:
+            - Name: SESSION_SECRET
+              ValueFrom: !Ref SessionSecret
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref EcsLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-task-definition"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Application Load Balancer
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-alb"
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '60'
+      SecurityGroups:
+        - !Ref AlbSecurityGroupId
+      Subnets:
+        - !Ref PublicSubnet1Id
+        - !Ref PublicSubnet2Id
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-alb"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ALB Target Group
+  AlbTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-tg"
+      Protocol: HTTP
+      Port: !Ref ContainerPort
+      TargetType: ip
+      VpcId: !Ref VpcId
+      HealthCheckPath: /init
+      HealthCheckIntervalSeconds: 60
+      HealthCheckTimeoutSeconds: 30
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+      HealthCheckPort: traffic-port
+      Matcher:
+        HttpCode: 200,201,202,204
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-tg"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ALB Listener
+  AlbHttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AlbTargetGroup
+
+  # ECS Service
+  EcsService:
+    Type: AWS::ECS::Service
+    DependsOn: AlbHttpListener
+    Properties:
+      ServiceName: !Sub "${ProjectName}-${Environment}-service"
+      Cluster: !Ref EcsCluster
+      TaskDefinition: !Ref EcsTaskDefinition
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref EcsSecurityGroupId
+          Subnets:
+            - !Ref PublicSubnet1Id
+            - !Ref PublicSubnet2Id
+      LoadBalancers:
+        - ContainerName: !Sub "${ProjectName}-${Environment}-container"
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref AlbTargetGroup
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-service"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  VpcId:
+    Description: 'VPC ID'
+    Value: !Ref VpcId
+    Export:
+      Name: !Sub '${AWS::StackName}-VpcId'
+
+  EcsClusterName:
+    Description: 'ECS Cluster Name'
+    Value: !Ref EcsCluster
+    Export:
+      Name: !Sub '${AWS::StackName}-EcsClusterName'
+
+  EcsServiceName:
+    Description: 'ECS Service Name'
+    Value: !Ref EcsService
+    Export:
+      Name: !Sub '${AWS::StackName}-EcsServiceName'
+
+  LoadBalancerDNS:
+    Description: 'Load Balancer DNS Name'
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+    Export:
+      Name: !Sub '${AWS::StackName}-LoadBalancerDNS'
+
+  LoadBalancerURL:
+    Description: 'Load Balancer URL'
+    Value: !Sub "http://${ApplicationLoadBalancer.DNSName}"
+    Export:
+      Name: !Sub '${AWS::StackName}-LoadBalancerURL' 

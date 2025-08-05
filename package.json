@@ -1,0 +1,20 @@
+{
+  "name": "cloudformation-template",
+  "version": "1.0.0",
+  "description": "Infrastructure template repo for AWS CloudFormation templates",
+  "homepage": "https://github.com/tripleten-externships/cloudformation-template#readme",
+  "bugs": {
+    "url": "https://github.com/tripleten-externships/cloudformation-template/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tripleten-externships/cloudformation-template.git"
+  },
+  "license": "ISC",
+  "author": "costjonah",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}

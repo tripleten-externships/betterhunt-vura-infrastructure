@@ -1,0 +1,463 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Main CloudFormation template that creates nested stacks for a complete environment'
+
+Parameters:
+  TemplatesBucket:
+    Type: String
+    Description: 'S3 bucket containing the nested templates'
+    Default: 'cloudformation-templates'
+
+  ProjectName:
+    Type: String
+    Description: 'Name of the project - used for resource naming (must be lowercase, alphanumeric, and hyphens only)'
+    Default: 'my-app'
+    MinLength: 3
+    MaxLength: 40
+    AllowedPattern: '^[a-z0-9][a-z0-9-]*[a-z0-9]$'
+    ConstraintDescription: 'Must be a valid name format (lowercase, alphanumeric, hyphens only)'
+    
+  Environment:
+    Type: String
+    Description: 'Environment name (dev, staging, prod)'
+    Default: 'dev'
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+      
+  DefaultRootObject:
+    Type: String
+    Description: 'Default root object for the website'
+    Default: 'index.html'
+
+  ErrorDocument:
+    Type: String
+    Description: 'Error document for SPA routing'
+    Default: 'index.html'
+    
+  PriceClass:
+    Type: String
+    Description: 'CloudFront price class'
+    Default: 'PriceClass_100'
+    AllowedValues:
+      - PriceClass_All
+      - PriceClass_200
+      - PriceClass_100
+      
+  CustomDomainName:
+    Type: String
+    Description: 'Custom domain name for production (optional)'
+    Default: ''
+
+  CertificateArn:
+    Type: String
+    Description: 'ACM certificate ARN for custom domain (required if CustomDomainName is specified)'
+    Default: ''
+
+  # S3 bucket configuration
+  EnableStagingBucket:
+    Type: String
+    Description: 'Enable staging bucket'
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+      
+  EnableProductionBucket:
+    Type: String
+    Description: 'Enable production bucket'
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+      
+  EnableStorybookBucket:
+    Type: String
+    Description: 'Enable storybook bucket'
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+  # CloudFront configuration
+  EnableStagingDistribution:
+    Type: String
+    Description: 'Enable staging distribution'
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+      
+  EnableProductionDistribution:
+    Type: String
+    Description: 'Enable production distribution'
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+      
+  EnableStorybookDistribution:
+    Type: String
+    Description: 'Enable storybook distribution'
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+  # Backend configuration
+  EnableBackendResources:
+    Type: String
+    Description: 'Enable backend resources (VPC, ECS, RDS, API Gateway)'
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+  
+  VpcCIDR:
+    Type: String
+    Description: 'CIDR block for the VPC'
+    Default: '10.0.0.0/16'
+  
+  PublicSubnet1CIDR:
+    Type: String
+    Description: 'CIDR block for Public Subnet 1'
+    Default: '10.0.0.0/24'
+  
+  PublicSubnet2CIDR:
+    Type: String
+    Description: 'CIDR block for Public Subnet 2'
+    Default: '10.0.1.0/24'
+  
+  PrivateSubnet1CIDR:
+    Type: String
+    Description: 'CIDR block for Private Subnet 1'
+    Default: '10.0.2.0/24'
+  
+  PrivateSubnet2CIDR:
+    Type: String
+    Description: 'CIDR block for Private Subnet 2'
+    Default: '10.0.3.0/24'
+  
+  DBInstanceClass:
+    Type: String
+    Description: 'RDS instance type'
+    Default: 'db.t3.micro'
+  
+  DBName:
+    Type: String
+    Description: 'Database name'
+    Default: 'appdb'
+    MinLength: 1
+    MaxLength: 64
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+  
+  DBUsername:
+    Type: String
+    Description: 'Database admin username'
+    Default: 'dbadmin'
+    NoEcho: true
+  
+  DBPassword:
+    Type: String
+    Description: 'Database admin password'
+    Default: ''
+    NoEcho: true
+  
+  ContainerImage:
+    Type: String
+    Description: 'Container image for ECS service'
+    Default: ''
+  
+  ContainerPort:
+    Type: Number
+    Description: 'Port exposed by the container'
+    Default: 80
+  
+  DesiredCount:
+    Type: Number
+    Description: 'Desired number of ECS tasks'
+    Default: 2
+    
+  # GitHub Actions configuration
+  EnableGitHubActions:
+    Type: String
+    Description: 'Create IAM user and access keys for GitHub Actions CI/CD'
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+Conditions:
+  HasCustomDomain: !Not [!Equals [!Ref CustomDomainName, '']]
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
+  UseCustomDomain: !And [!Condition HasCustomDomain, !Condition HasCertificate]
+  CreateBackendResources: !Equals [!Ref EnableBackendResources, 'true']
+  HasDBPassword: !Not [!Equals [!Ref DBPassword, '']]
+  HasContainerImage: !Not [!Equals [!Ref ContainerImage, '']]
+  CreateDatabase: !And [!Condition CreateBackendResources, !Condition HasDBPassword]
+  CreateEcsService: !And [!Condition CreateBackendResources, !Condition HasContainerImage]
+  EnableStagingBucket: !Equals [!Ref EnableStagingBucket, 'true']
+  EnableProductionBucket: !Equals [!Ref EnableProductionBucket, 'true'] 
+  EnableStorybookBucket: !Equals [!Ref EnableStorybookBucket, 'true']
+  EnableStagingDistribution: !Equals [!Ref EnableStagingDistribution, 'true']
+  EnableProductionDistribution: !Equals [!Ref EnableProductionDistribution, 'true']
+  EnableStorybookDistribution: !Equals [!Ref EnableStorybookDistribution, 'true']
+  EnableGitHubActions: !Equals [!Ref EnableGitHubActions, 'true']
+
+Resources:
+  # VPC and Networking Stack
+  NetworkingStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateBackendResources
+    Properties:
+      TemplateURL: !Sub 'https://${TemplatesBucket}.s3.${AWS::Region}.amazonaws.com/templates/networking/vpc.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        VpcCIDR: !Ref VpcCIDR
+        PublicSubnet1CIDR: !Ref PublicSubnet1CIDR
+        PublicSubnet2CIDR: !Ref PublicSubnet2CIDR
+        PrivateSubnet1CIDR: !Ref PrivateSubnet1CIDR
+        PrivateSubnet2CIDR: !Ref PrivateSubnet2CIDR
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-networking"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Security Groups Stack
+  SecurityGroupsStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateBackendResources
+    DependsOn: NetworkingStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplatesBucket}.s3.${AWS::Region}.amazonaws.com/templates/networking/security-groups.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        VpcId: !GetAtt NetworkingStack.Outputs.VpcId
+        ContainerPort: !Ref ContainerPort
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-security-groups"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # S3 Buckets Stack
+  StorageStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplatesBucket}.s3.${AWS::Region}.amazonaws.com/templates/storage/s3-buckets.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        DefaultRootObject: !Ref DefaultRootObject
+        ErrorDocument: !Ref ErrorDocument
+        EnableStagingBucket: !Ref EnableStagingBucket
+        EnableProductionBucket: !Ref EnableProductionBucket
+        EnableStorybookBucket: !Ref EnableStorybookBucket
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-storage"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # CloudFront Stack
+  CloudFrontStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: StorageStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplatesBucket}.s3.${AWS::Region}.amazonaws.com/templates/frontend/cloudfront.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        DefaultRootObject: !Ref DefaultRootObject
+        PriceClass: !Ref PriceClass
+        CustomDomainName: !Ref CustomDomainName
+        CertificateArn: !Ref CertificateArn
+        StagingBucketWebsiteURL: !If [EnableStagingBucket, !GetAtt StorageStack.Outputs.StagingWebsiteURL, '']
+        ProductionBucketWebsiteURL: !If [EnableProductionBucket, !GetAtt StorageStack.Outputs.ProductionWebsiteURL, '']
+        StorybookBucketWebsiteURL: !If [EnableStorybookBucket, !GetAtt StorageStack.Outputs.StorybookWebsiteURL, '']
+        EnableStagingDistribution: !Ref EnableStagingDistribution
+        EnableProductionDistribution: !Ref EnableProductionDistribution
+        EnableStorybookDistribution: !Ref EnableStorybookDistribution
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-cloudfront"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Database Stack
+  DatabaseStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateDatabase
+    DependsOn:
+      - NetworkingStack
+      - SecurityGroupsStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplatesBucket}.s3.${AWS::Region}.amazonaws.com/templates/backend/database.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        DBInstanceClass: !Ref DBInstanceClass
+        DBName: !Ref DBName
+        DBUsername: !Ref DBUsername
+        DBPassword: !Ref DBPassword
+        PrivateSubnet1Id: !GetAtt NetworkingStack.Outputs.PrivateSubnet1Id
+        PrivateSubnet2Id: !GetAtt NetworkingStack.Outputs.PrivateSubnet2Id
+        RdsSecurityGroupId: !GetAtt SecurityGroupsStack.Outputs.RdsSecurityGroupId
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-database"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ECS Stack
+  EcsStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateEcsService
+    DependsOn:
+      - NetworkingStack
+      - SecurityGroupsStack
+      - DatabaseStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplatesBucket}.s3.${AWS::Region}.amazonaws.com/templates/backend/ecs.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        ContainerImage: !Ref ContainerImage
+        ContainerPort: !Ref ContainerPort
+        DesiredCount: !Ref DesiredCount
+        VpcId: !GetAtt NetworkingStack.Outputs.VpcId
+        PublicSubnet1Id: !GetAtt NetworkingStack.Outputs.PublicSubnet1Id
+        PublicSubnet2Id: !GetAtt NetworkingStack.Outputs.PublicSubnet2Id
+        EcsSecurityGroupId: !GetAtt SecurityGroupsStack.Outputs.EcsSecurityGroupId
+        AlbSecurityGroupId: !GetAtt SecurityGroupsStack.Outputs.AlbSecurityGroupId
+        DatabaseEndpoint: !GetAtt DatabaseStack.Outputs.DatabaseEndpoint
+        DatabasePort: !GetAtt DatabaseStack.Outputs.DatabasePort
+        DatabaseName: !GetAtt DatabaseStack.Outputs.DatabaseName
+        DatabaseUsername: !GetAtt DatabaseStack.Outputs.DatabaseUsername
+        DatabasePassword: !Ref DBPassword
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-ecs"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # API Gateway Stack
+  ApiGatewayStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: CreateEcsService
+    DependsOn: EcsStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplatesBucket}.s3.${AWS::Region}.amazonaws.com/templates/backend/api-gateway.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        LoadBalancerDNS: !GetAtt EcsStack.Outputs.LoadBalancerDNS
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-api-gateway"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # IAM for GitHub Actions Stack
+  GithubActionsStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: EnableGitHubActions
+    DependsOn:
+      - StorageStack
+      - CloudFrontStack
+    Properties:
+      TemplateURL: !Sub 'https://${TemplatesBucket}.s3.${AWS::Region}.amazonaws.com/templates/iam/github-actions.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        EnableGitHubActions: !Ref EnableGitHubActions
+        StagingBucketArn: !If [EnableStagingBucket, !Sub "arn:aws:s3:::${StorageStack.Outputs.StagingBucketName}", '']
+        ProductionBucketArn: !If [EnableProductionBucket, !Sub "arn:aws:s3:::${StorageStack.Outputs.ProductionBucketName}", '']
+        StorybookBucketArn: !If [EnableStorybookBucket, !Sub "arn:aws:s3:::${StorageStack.Outputs.StorybookBucketName}", '']
+        StagingDistributionArn: !If [EnableStagingDistribution, !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontStack.Outputs.StagingDistributionId}", '']
+        ProductionDistributionArn: !If [EnableProductionDistribution, !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontStack.Outputs.ProductionDistributionId}", '']
+        StorybookDistributionArn: !If [EnableStorybookDistribution, !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontStack.Outputs.StorybookDistributionId}", '']
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-github-actions"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+Outputs:
+  # Frontend Outputs
+  StagingDistributionURL:
+    Condition: EnableStagingDistribution
+    Description: 'CloudFront URL for staging'
+    Value: !GetAtt CloudFrontStack.Outputs.StagingDistributionURL
+    Export:
+      Name: !Sub '${AWS::StackName}-StagingDistributionURL'
+
+  ProductionDistributionURL:
+    Condition: EnableProductionDistribution
+    Description: 'CloudFront URL for production'
+    Value: !GetAtt CloudFrontStack.Outputs.ProductionDistributionURL
+    Export:
+      Name: !Sub '${AWS::StackName}-ProductionDistributionURL'
+
+  StorybookDistributionURL:
+    Condition: EnableStorybookDistribution
+    Description: 'CloudFront URL for storybook'
+    Value: !GetAtt CloudFrontStack.Outputs.StorybookDistributionURL
+    Export:
+      Name: !Sub '${AWS::StackName}-StorybookDistributionURL'
+
+  # Backend Outputs
+  ApiEndpoint:
+    Condition: CreateEcsService
+    Description: 'API Gateway URL'
+    Value: !GetAtt ApiGatewayStack.Outputs.ApiGatewayURL
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiEndpoint'
+
+  GraphqlEndpoint:
+    Condition: CreateEcsService
+    Description: 'GraphQL API Endpoint'
+    Value: !GetAtt ApiGatewayStack.Outputs.GraphqlEndpoint
+    Export:
+      Name: !Sub '${AWS::StackName}-GraphqlEndpoint'
+
+  AdminEndpoint:
+    Condition: CreateEcsService
+    Description: 'Admin Dashboard API Endpoint'
+    Value: !GetAtt ApiGatewayStack.Outputs.AdminEndpoint
+    Export:
+      Name: !Sub '${AWS::StackName}-AdminEndpoint'
+
+  # GitHub Actions Outputs
+  GitHubActionsAccessKeyId:
+    Condition: EnableGitHubActions
+    Description: 'Access key for GitHub Actions'
+    Value: !GetAtt GithubActionsStack.Outputs.GitHubActionsAccessKeyId
+    Export:
+      Name: !Sub '${AWS::StackName}-GitHubActionsAccessKeyId'
+
+  GitHubActionsSecretAccessKey:
+    Condition: EnableGitHubActions
+    Description: 'Secret access key for GitHub Actions'
+    Value: !GetAtt GithubActionsStack.Outputs.GitHubActionsSecretAccessKey
+    Export:
+      Name: !Sub '${AWS::StackName}-GitHubActionsSecretAccessKey' 

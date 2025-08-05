@@ -1,0 +1,64 @@
+# Generated CloudFormation files
+packaged.yaml
+*-packaged.yaml
+*-transformed.yaml
+.aws-sam/
+sam-output/
+*.template
+*.template-packaged
+
+# AWS artifacts
+versions.json
+main-check.yaml
+
+# Secrets/credentials
+*.pem
+*.key
+*.env
+.envrc
+.env*
+credentials.json
+
+# S3 upload metadata
+.s3-upload-list
+
+# Cache directories
+.cfn-cache/
+
+# Local AWS profiles/config
+.aws/
+
+# Node.js (for when using any JS tooling)
+node_modules/
+npm-debug.log
+package-lock.json
+
+# Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+cfn-logs/
+
+# Backup files
+*.bak
+*-backup.*
+
+# GitHub Actions testing with `act`
+event.json
+.secrets

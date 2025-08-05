@@ -1,0 +1,323 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFront distributions for frontend hosting'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: 'Name of the project - used for resource naming'
+    
+  Environment:
+    Type: String
+    Description: 'Environment name (dev, staging, prod)'
+    Default: 'dev'
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+      
+  DefaultRootObject:
+    Type: String
+    Description: 'Default root object for the website'
+    Default: 'index.html'
+    
+  PriceClass:
+    Type: String
+    Description: 'CloudFront price class'
+    Default: 'PriceClass_100'
+    AllowedValues:
+      - PriceClass_All
+      - PriceClass_200
+      - PriceClass_100
+      
+  CustomDomainName:
+    Type: String
+    Description: 'Custom domain name for production (optional)'
+    Default: ''
+
+  CertificateArn:
+    Type: String
+    Description: 'ACM certificate ARN for custom domain (required if CustomDomainName is specified)'
+    Default: ''
+      
+  StagingBucketWebsiteURL:
+    Type: String
+    Description: 'S3 website URL for staging bucket'
+    
+  ProductionBucketWebsiteURL:
+    Type: String
+    Description: 'S3 website URL for production bucket'
+    Default: ''
+    
+  StorybookBucketWebsiteURL:
+    Type: String
+    Description: 'S3 website URL for storybook bucket'
+    Default: ''
+      
+  EnableStagingDistribution:
+    Type: String
+    Description: 'Enable staging distribution'
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+      
+  EnableProductionDistribution:
+    Type: String
+    Description: 'Enable production distribution'
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+      
+  EnableStorybookDistribution:
+    Type: String
+    Description: 'Enable storybook distribution'
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+Conditions:
+  CreateStagingDistribution: !Equals [!Ref EnableStagingDistribution, 'true']
+  CreateProductionDistribution: !Equals [!Ref EnableProductionDistribution, 'true']
+  CreateStorybookDistribution: !Equals [!Ref EnableStorybookDistribution, 'true']
+  HasCustomDomain: !Not [!Equals [!Ref CustomDomainName, '']]
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
+  UseCustomDomain: !And [!Condition HasCustomDomain, !Condition HasCertificate, !Condition CreateProductionDistribution]
+  IsSupportedFunctionRegion: !Or [
+    !Equals [!Ref "AWS::Region", "us-east-1"],
+    !Equals [!Ref "AWS::Region", "us-west-2"],
+    !Equals [!Ref "AWS::Region", "eu-west-1"]
+  ]
+
+Resources:
+  # CloudFront Function for content type handling
+  ContentTypeFunction:
+    Type: AWS::CloudFront::Function
+    Condition: IsSupportedFunctionRegion
+    Properties:
+      Name: !Sub "${ProjectName}-${Environment}-content-type-handler"
+      AutoPublish: true
+      FunctionConfig:
+        Comment: "Add correct content type headers and CORS headers"
+        Runtime: cloudfront-js-1.0
+      FunctionCode: |
+        function handler(event) {
+          var response = event.response;
+          var request = event.request;
+          
+          // Add CORS headers
+          response.headers['access-control-allow-origin'] = {value: '*'};
+          response.headers['access-control-allow-methods'] = {value: 'GET,HEAD,OPTIONS'};
+          response.headers['access-control-allow-headers'] = {value: '*'};
+          
+          // Set content type for .cjs files
+          if (request.uri.endsWith('.cjs')) {
+            response.headers['content-type'] = {value: 'application/javascript'};
+          }
+          
+          // Set content type for .mjs files
+          if (request.uri.endsWith('.mjs')) {
+            response.headers['content-type'] = {value: 'application/javascript'};
+          }
+          
+          return response;
+        }
+
+  # CloudFront Distributions
+  StagingDistribution:
+    Type: AWS::CloudFront::Distribution
+    Condition: CreateStagingDistribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub "${ProjectName}-${Environment} Frontend Staging Distribution"
+        Aliases: []
+        DefaultCacheBehavior:
+          TargetOriginId: !Sub "${ProjectName}-${Environment}-staging-origin"
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf  # CORS-S3Origin
+          ResponseHeadersPolicyId: 60669652-455b-4ae9-85a4-c4c02393f86c  # SecurityHeadersPolicy
+          FunctionAssociations: !If
+            - IsSupportedFunctionRegion
+            - - EventType: viewer-response
+                FunctionARN: !GetAtt ContentTypeFunction.FunctionARN
+            - []
+        Origins:
+          - Id: !Sub "${ProjectName}-${Environment}-staging-origin"
+            DomainName: !Select [1, !Split ["//", !Ref StagingBucketWebsiteURL]]
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: http-only
+        Enabled: true
+        DefaultRootObject: !Ref DefaultRootObject
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: !Sub '/${DefaultRootObject}'
+            ErrorCachingMinTTL: 300
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: !Sub '/${DefaultRootObject}'
+            ErrorCachingMinTTL: 300
+        PriceClass: !Ref PriceClass
+
+  ProductionDistribution:
+    Type: AWS::CloudFront::Distribution
+    Condition: CreateProductionDistribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub "${ProjectName}-${Environment} Frontend Production Distribution"
+        Aliases: !If
+          - UseCustomDomain
+          - [!Ref CustomDomainName]
+          - []
+        DefaultCacheBehavior:
+          TargetOriginId: !Sub "${ProjectName}-${Environment}-prod-origin"
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf  # CORS-S3Origin
+          ResponseHeadersPolicyId: 60669652-455b-4ae9-85a4-c4c02393f86c  # SecurityHeadersPolicy
+          FunctionAssociations: !If
+            - IsSupportedFunctionRegion
+            - - EventType: viewer-response
+                FunctionARN: !GetAtt ContentTypeFunction.FunctionARN
+            - []
+        Origins:
+          - Id: !Sub "${ProjectName}-${Environment}-prod-origin"
+            DomainName: !Select [1, !Split ["//", !Ref ProductionBucketWebsiteURL]]
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: http-only
+        Enabled: true
+        DefaultRootObject: !Ref DefaultRootObject
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: !Sub '/${DefaultRootObject}'
+            ErrorCachingMinTTL: 300
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: !Sub '/${DefaultRootObject}'
+            ErrorCachingMinTTL: 300
+        PriceClass: !Ref PriceClass
+        ViewerCertificate: !If
+          - UseCustomDomain
+          - AcmCertificateArn: !Ref CertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
+
+  StorybookDistribution:
+    Type: AWS::CloudFront::Distribution
+    Condition: CreateStorybookDistribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub "${ProjectName}-${Environment} Storybook Distribution"
+        Aliases: []
+        DefaultCacheBehavior:
+          TargetOriginId: !Sub "${ProjectName}-${Environment}-storybook-origin"
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf  # CORS-S3Origin
+          ResponseHeadersPolicyId: 5cc3b908-e619-4b99-88e5-2cf7f45965bd  # SimpleCORS
+          FunctionAssociations: !If
+            - IsSupportedFunctionRegion
+            - - EventType: viewer-response
+                FunctionARN: !GetAtt ContentTypeFunction.FunctionARN
+            - []
+        Origins:
+          - Id: !Sub "${ProjectName}-${Environment}-storybook-origin"
+            DomainName: !Select [1, !Split ["//", !Ref StorybookBucketWebsiteURL]]
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: http-only
+        Enabled: true
+        DefaultRootObject: !Ref DefaultRootObject
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: !Sub '/${DefaultRootObject}'
+            ErrorCachingMinTTL: 300
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: !Sub '/${DefaultRootObject}'
+            ErrorCachingMinTTL: 300
+        PriceClass: !Ref PriceClass
+
+Outputs:
+  ContentTypeFunctionArn:
+    Condition: IsSupportedFunctionRegion
+    Description: 'CloudFront Function ARN for content type handling'
+    Value: !GetAtt ContentTypeFunction.FunctionARN
+    Export:
+      Name: !Sub '${AWS::StackName}-ContentTypeFunctionArn'
+
+  StagingDistributionId:
+    Condition: CreateStagingDistribution
+    Description: 'CloudFront distribution ID for staging'
+    Value: !Ref StagingDistribution
+    Export:
+      Name: !Sub '${AWS::StackName}-StagingDistributionId'
+
+  ProductionDistributionId:
+    Condition: CreateProductionDistribution
+    Description: 'CloudFront distribution ID for production'
+    Value: !Ref ProductionDistribution
+    Export:
+      Name: !Sub '${AWS::StackName}-ProductionDistributionId'
+
+  StorybookDistributionId:
+    Condition: CreateStorybookDistribution
+    Description: 'CloudFront distribution ID for storybook'
+    Value: !Ref StorybookDistribution
+    Export:
+      Name: !Sub '${AWS::StackName}-StorybookDistributionId'
+
+  StagingDistributionDomainName:
+    Condition: CreateStagingDistribution
+    Description: 'CloudFront distribution domain name for staging'
+    Value: !GetAtt StagingDistribution.DomainName
+    Export:
+      Name: !Sub '${AWS::StackName}-StagingDistributionDomainName'
+
+  ProductionDistributionDomainName:
+    Condition: CreateProductionDistribution
+    Description: 'CloudFront distribution domain name for production'
+    Value: !GetAtt ProductionDistribution.DomainName
+    Export:
+      Name: !Sub '${AWS::StackName}-ProductionDistributionDomainName'
+
+  StorybookDistributionDomainName:
+    Condition: CreateStorybookDistribution
+    Description: 'CloudFront distribution domain name for storybook'
+    Value: !GetAtt StorybookDistribution.DomainName
+    Export:
+      Name: !Sub '${AWS::StackName}-StorybookDistributionDomainName'
+
+  StagingDistributionURL:
+    Condition: CreateStagingDistribution
+    Description: 'CloudFront URL for staging'
+    Value: !Sub 'https://${StagingDistribution.DomainName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-StagingDistributionURL'
+
+  ProductionDistributionURL:
+    Condition: CreateProductionDistribution
+    Description: 'CloudFront URL for production'
+    Value: !If
+      - UseCustomDomain
+      - !Sub 'https://${CustomDomainName}'
+      - !Sub 'https://${ProductionDistribution.DomainName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-ProductionDistributionURL'
+
+  StorybookDistributionURL:
+    Condition: CreateStorybookDistribution
+    Description: 'CloudFront URL for storybook'
+    Value: !Sub 'https://${StorybookDistribution.DomainName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-StorybookDistributionURL' 

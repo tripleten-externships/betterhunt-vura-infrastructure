@@ -1,0 +1,244 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'S3 buckets for frontend hosting'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: 'Name of the project - used for resource naming'
+    
+  Environment:
+    Type: String
+    Description: 'Environment name (dev, staging, prod)'
+    Default: 'dev'
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+      
+  DefaultRootObject:
+    Type: String
+    Description: 'Default root object for the website'
+    Default: 'index.html'
+
+  ErrorDocument:
+    Type: String
+    Description: 'Error document for SPA routing'
+    Default: 'index.html'
+      
+  EnableStagingBucket:
+    Type: String
+    Description: 'Enable staging bucket'
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+      
+  EnableProductionBucket:
+    Type: String
+    Description: 'Enable production bucket'
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+      
+  EnableStorybookBucket:
+    Type: String
+    Description: 'Enable storybook bucket'
+    Default: 'false'
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+Conditions:
+  CreateStagingBucket: !Equals [!Ref EnableStagingBucket, 'true']
+  CreateProductionBucket: !Equals [!Ref EnableProductionBucket, 'true']
+  CreateStorybookBucket: !Equals [!Ref EnableStorybookBucket, 'true']
+
+Resources:
+  StagingBucket:
+    Type: AWS::S3::Bucket
+    Condition: CreateStagingBucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-${Environment}-staging-${AWS::AccountId}-${AWS::Region}"
+      WebsiteConfiguration:
+        IndexDocument: !Ref DefaultRootObject
+        ErrorDocument: !Ref ErrorDocument
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, HEAD]
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-frontend-staging"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  ProductionBucket:
+    Type: AWS::S3::Bucket
+    Condition: CreateProductionBucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-${Environment}-prod-${AWS::AccountId}-${AWS::Region}"
+      WebsiteConfiguration:
+        IndexDocument: !Ref DefaultRootObject
+        ErrorDocument: !Ref ErrorDocument
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, HEAD]
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-frontend-prod"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  StorybookBucket:
+    Type: AWS::S3::Bucket
+    Condition: CreateStorybookBucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-${Environment}-storybook-${AWS::AccountId}-${AWS::Region}"
+      WebsiteConfiguration:
+        IndexDocument: !Ref DefaultRootObject
+        ErrorDocument: !Ref ErrorDocument
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, HEAD]
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-storybook"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # S3 Bucket Policies
+  StagingBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: CreateStagingBucket
+    Properties:
+      Bucket: !Ref StagingBucket
+      PolicyDocument:
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub "${StagingBucket.Arn}/*"
+
+  ProductionBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: CreateProductionBucket
+    Properties:
+      Bucket: !Ref ProductionBucket
+      PolicyDocument:
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub "${ProductionBucket.Arn}/*"
+
+  StorybookBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: CreateStorybookBucket
+    Properties:
+      Bucket: !Ref StorybookBucket
+      PolicyDocument:
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub "${StorybookBucket.Arn}/*"
+
+Outputs:
+  StagingBucketName:
+    Condition: CreateStagingBucket
+    Description: 'Name of the staging S3 bucket'
+    Value: !Ref StagingBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-StagingBucketName'
+
+  ProductionBucketName:
+    Condition: CreateProductionBucket
+    Description: 'Name of the production S3 bucket'
+    Value: !Ref ProductionBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-ProductionBucketName'
+
+  StorybookBucketName:
+    Condition: CreateStorybookBucket
+    Description: 'Name of the storybook S3 bucket'
+    Value: !Ref StorybookBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-StorybookBucketName'
+
+  StagingWebsiteURL:
+    Condition: CreateStagingBucket
+    Description: 'URL of the staging website'
+    Value: !GetAtt StagingBucket.WebsiteURL
+    Export:
+      Name: !Sub '${AWS::StackName}-StagingWebsiteURL'
+
+  ProductionWebsiteURL:
+    Condition: CreateProductionBucket
+    Description: 'URL of the production website'
+    Value: !GetAtt ProductionBucket.WebsiteURL
+    Export:
+      Name: !Sub '${AWS::StackName}-ProductionWebsiteURL'
+
+  StorybookWebsiteURL:
+    Condition: CreateStorybookBucket
+    Description: 'URL of the storybook website'
+    Value: !GetAtt StorybookBucket.WebsiteURL
+    Export:
+      Name: !Sub '${AWS::StackName}-StorybookWebsiteURL' 

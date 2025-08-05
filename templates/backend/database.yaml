@@ -1,0 +1,123 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'RDS database for the application'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: 'Name of the project - used for resource naming'
+    
+  Environment:
+    Type: String
+    Description: 'Environment name (dev, staging, prod)'
+    Default: 'dev'
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+      
+  DBInstanceClass:
+    Type: String
+    Description: 'RDS instance type'
+    Default: 'db.t3.micro'
+  
+  DBName:
+    Type: String
+    Description: 'Database name'
+    Default: 'appdb'
+    MinLength: 1
+    MaxLength: 64
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+  
+  DBUsername:
+    Type: String
+    Description: 'Database admin username'
+    Default: 'dbadmin'
+    NoEcho: true
+  
+  DBPassword:
+    Type: String
+    Description: 'Database admin password'
+    NoEcho: true
+    
+  PrivateSubnet1Id:
+    Type: String
+    Description: 'Private subnet 1 ID'
+    
+  PrivateSubnet2Id:
+    Type: String
+    Description: 'Private subnet 2 ID'
+    
+  RdsSecurityGroupId:
+    Type: String
+    Description: 'Security Group ID for RDS'
+
+Resources:
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub "Subnet group for ${ProjectName}-${Environment} database"
+      SubnetIds:
+        - !Ref PrivateSubnet1Id
+        - !Ref PrivateSubnet2Id
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-db-subnet-group"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      AllocatedStorage: 20
+      DBInstanceClass: !Ref DBInstanceClass
+      DBName: !Ref DBName
+      Engine: mysql
+      EngineVersion: '8.0'
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      MultiAZ: !If [IsProductionEnvironment, true, false]
+      StorageType: gp2
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RdsSecurityGroupId
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-database"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+      BackupRetentionPeriod: !If [IsProductionEnvironment, 7, 1]
+      DeletionProtection: !If [IsProductionEnvironment, true, false]
+
+Conditions:
+  IsProductionEnvironment: !Equals [!Ref Environment, 'prod']
+
+Outputs:
+  DatabaseEndpoint:
+    Description: 'Database endpoint address'
+    Value: !GetAtt Database.Endpoint.Address
+    Export:
+      Name: !Sub '${AWS::StackName}-DatabaseEndpoint'
+
+  DatabasePort:
+    Description: 'Database port'
+    Value: !GetAtt Database.Endpoint.Port
+    Export:
+      Name: !Sub '${AWS::StackName}-DatabasePort'
+      
+  DatabaseName:
+    Description: 'Database name'
+    Value: !Ref DBName
+    Export:
+      Name: !Sub '${AWS::StackName}-DatabaseName'
+      
+  DatabaseUsername:
+    Description: 'Database username'
+    Value: !Ref DBUsername
+    Export:
+      Name: !Sub '${AWS::StackName}-DatabaseUsername' 

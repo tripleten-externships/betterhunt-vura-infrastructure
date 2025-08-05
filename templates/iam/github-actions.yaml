@@ -1,0 +1,236 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'IAM resources for GitHub Actions'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: 'Name of the project - used for resource naming'
+    
+  Environment:
+    Type: String
+    Description: 'Environment name (dev, staging, prod)'
+    Default: 'dev'
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+      
+  StagingBucketArn:
+    Type: String
+    Description: 'ARN of the staging bucket'
+    Default: ''
+    
+  ProductionBucketArn:
+    Type: String
+    Description: 'ARN of the production bucket'
+    Default: ''
+    
+  StorybookBucketArn:
+    Type: String
+    Description: 'ARN of the storybook bucket'
+    Default: ''
+    
+  StagingDistributionArn:
+    Type: String
+    Description: 'ARN of the staging CloudFront distribution'
+    Default: ''
+    
+  ProductionDistributionArn:
+    Type: String
+    Description: 'ARN of the production CloudFront distribution'
+    Default: ''
+    
+  StorybookDistributionArn:
+    Type: String
+    Description: 'ARN of the storybook CloudFront distribution'
+    Default: ''
+    
+  EnableGitHubActions:
+    Type: String
+    Description: 'Create IAM user and access keys for GitHub Actions CI/CD'
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+Conditions:
+  CreateGitHubActionsUser: !Equals [!Ref EnableGitHubActions, 'true']
+  HasStagingBucket: !Not [!Equals [!Ref StagingBucketArn, '']]
+  HasProductionBucket: !Not [!Equals [!Ref ProductionBucketArn, '']]
+  HasStorybookBucket: !Not [!Equals [!Ref StorybookBucketArn, '']]
+  HasStagingDistribution: !Not [!Equals [!Ref StagingDistributionArn, '']]
+  HasProductionDistribution: !Not [!Equals [!Ref ProductionDistributionArn, '']]
+  HasStorybookDistribution: !Not [!Equals [!Ref StorybookDistributionArn, '']]
+
+Resources:
+  # IAM User for GitHub Actions
+  GitHubActionsUser:
+    Type: AWS::IAM::User
+    Condition: CreateGitHubActionsUser
+    Properties:
+      UserName: !Sub "${ProjectName}-${Environment}-github-actions"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-github-actions"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Policy for S3, CloudFront, ECR, and ECS
+  GitHubActionsPolicy:
+    Type: AWS::IAM::Policy
+    Condition: CreateGitHubActionsUser
+    Properties:
+      PolicyName: !Sub "${ProjectName}-${Environment}-deployment-policy"
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - !If
+            - HasStagingBucket
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:PutObjectAcl
+                - s3:GetObject
+                - s3:DeleteObject
+                - s3:ListBucket
+                - s3:PutObjectTagging
+                - s3:GetObjectTagging
+              Resource:
+                - !Ref StagingBucketArn
+                - !Sub "${StagingBucketArn}/*"
+            - !Ref AWS::NoValue
+          - !If
+            - HasProductionBucket
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:PutObjectAcl
+                - s3:GetObject
+                - s3:DeleteObject
+                - s3:ListBucket
+                - s3:PutObjectTagging
+                - s3:GetObjectTagging
+              Resource:
+                - !Ref ProductionBucketArn
+                - !Sub "${ProductionBucketArn}/*"
+            - !Ref AWS::NoValue
+          - !If
+            - HasStorybookBucket
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:PutObjectAcl
+                - s3:GetObject
+                - s3:DeleteObject
+                - s3:ListBucket
+                - s3:PutObjectTagging
+                - s3:GetObjectTagging
+              Resource:
+                - !Ref StorybookBucketArn
+                - !Sub "${StorybookBucketArn}/*"
+            - !Ref AWS::NoValue
+          - !If
+            - HasStagingDistribution
+            - Effect: Allow
+              Action:
+                - cloudfront:CreateInvalidation
+                - cloudfront:GetInvalidation
+                - cloudfront:ListInvalidations
+              Resource: !Ref StagingDistributionArn
+            - !Ref AWS::NoValue
+          - !If
+            - HasProductionDistribution
+            - Effect: Allow
+              Action:
+                - cloudfront:CreateInvalidation
+                - cloudfront:GetInvalidation
+                - cloudfront:ListInvalidations
+              Resource: !Ref ProductionDistributionArn
+            - !Ref AWS::NoValue
+          - !If
+            - HasStorybookDistribution
+            - Effect: Allow
+              Action:
+                - cloudfront:CreateInvalidation
+                - cloudfront:GetInvalidation
+                - cloudfront:ListInvalidations
+              Resource: !Ref StorybookDistributionArn
+            - !Ref AWS::NoValue
+          - Effect: Allow
+            Action:
+              - ecr:GetAuthorizationToken
+              - ecr:BatchCheckLayerAvailability
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+              - ecr:InitiateLayerUpload
+              - ecr:UploadLayerPart
+              - ecr:CompleteLayerUpload
+              - ecr:PutImage
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - ecs:ListClusters
+              - ecs:ListServices
+              - ecs:ListTaskDefinitions
+              - ecs:DescribeTaskDefinition
+              - ecs:RegisterTaskDefinition
+              - ecs:UpdateService
+              - ecs:DescribeServices
+              - ecs:DescribeClusters
+            Resource: '*'
+          # CloudFormation permissions for getting stack exports
+          - Effect: Allow
+            Action:
+              - cloudformation:ListExports
+            Resource: '*'
+          # IAM permissions for ECS task roles
+          - Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource: 
+              # Allow passing any ECS task roles in the account
+              - !Sub "arn:aws:iam::${AWS::AccountId}:role/*-EcsStack-*-EcsTaskExecutionRole-*"
+              - !Sub "arn:aws:iam::${AWS::AccountId}:role/*-EcsStack-*-EcsTaskRole-*"
+              # Fallback for other role patterns
+              - !Sub "arn:aws:iam::${AWS::AccountId}:role/*EcsTaskExecutionRole*"
+              - !Sub "arn:aws:iam::${AWS::AccountId}:role/*EcsTaskRole*"
+          # CloudWatch Logs permissions for ECS
+          - Effect: Allow
+            Action:
+              - logs:DescribeLogGroups
+              - logs:DescribeLogStreams
+              - logs:GetLogEvents
+            Resource: '*'
+      Users:
+        - !Ref GitHubActionsUser
+
+  # Access Keys for GitHub Actions
+  GitHubActionsAccessKey:
+    Type: AWS::IAM::AccessKey
+    Condition: CreateGitHubActionsUser
+    Properties:
+      UserName: !Ref GitHubActionsUser
+
+Outputs:
+  GitHubActionsAccessKeyId:
+    Condition: CreateGitHubActionsUser
+    Description: 'Access key for GitHub Actions'
+    Value: !Ref GitHubActionsAccessKey
+    Export:
+      Name: !Sub '${AWS::StackName}-GitHubActionsAccessKeyId'
+
+  GitHubActionsSecretAccessKey:
+    Condition: CreateGitHubActionsUser
+    Description: 'Secret access key for GitHub Actions'
+    Value: !GetAtt GitHubActionsAccessKey.SecretAccessKey
+    Export:
+      Name: !Sub '${AWS::StackName}-GitHubActionsSecretAccessKey'
+
+  GitHubActionsUserName:
+    Condition: CreateGitHubActionsUser
+    Description: 'IAM user name for GitHub Actions'
+    Value: !Ref GitHubActionsUser
+    Export:
+      Name: !Sub '${AWS::StackName}-GitHubActionsUserName' 

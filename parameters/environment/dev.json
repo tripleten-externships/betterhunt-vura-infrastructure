@@ -1,0 +1,66 @@
+[
+  {
+    "ParameterKey": "TemplatesBucket",
+    "ParameterValue": "cloudformation-templates-109698388873"
+  },
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "my-app-dev"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "dev"
+  },
+  {
+    "ParameterKey": "DefaultRootObject",
+    "ParameterValue": "index.html"
+  },
+  {
+    "ParameterKey": "ErrorDocument",
+    "ParameterValue": "index.html"
+  },
+  {
+    "ParameterKey": "PriceClass",
+    "ParameterValue": "PriceClass_100"
+  },
+  {
+    "ParameterKey": "CustomDomainName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "CertificateArn",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "EnableStagingBucket",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "EnableProductionBucket",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableStorybookBucket",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableStagingDistribution",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "EnableProductionDistribution",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableStorybookDistribution",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableBackendResources",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "EnableGitHubActions",
+    "ParameterValue": "true"
+  }
+] 
