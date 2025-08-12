@@ -133,6 +133,7 @@ print_header "Uploading Templates to S3"
 TEMPLATES=(
     "templates/main.yaml:templates/main.yaml"
     "templates/networking/vpc.yaml:templates/networking/vpc.yaml"
+    "templates/networking/vpc-simple.yaml:templates/networking/vpc-simple.yaml"
     "templates/networking/security-groups.yaml:templates/networking/security-groups.yaml"
     "templates/storage/s3-buckets.yaml:templates/storage/s3-buckets.yaml"
     "templates/frontend/cloudfront.yaml:templates/frontend/cloudfront.yaml"

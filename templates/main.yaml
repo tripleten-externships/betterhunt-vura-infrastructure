@@ -211,18 +211,21 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: CreateBackendResources
     Properties:
-      TemplateURL: !If 
+      TemplateURL: !If [IsProductionEnvironment, !Sub 'https://${TemplatesBucket}.s3.${AWS::Region}.amazonaws.com/templates/networking/vpc.yaml', !Sub 'https://${TemplatesBucket}.s3.${AWS::Region}.amazonaws.com/templates/networking/vpc-simple.yaml']
+      Parameters: !If 
         - IsProductionEnvironment
-        - !Sub 'https://${TemplatesBucket}.s3.${AWS::Region}.amazonaws.com/templates/networking/vpc.yaml'
-        - !Sub 'https://${TemplatesBucket}.s3.${AWS::Region}.amazonaws.com/templates/networking/vpc-simple.yaml'
-      Parameters:
-        ProjectName: !Ref ProjectName
-        Environment: !Ref Environment
-        VpcCIDR: !Ref VpcCIDR
-        PublicSubnet1CIDR: !Ref PublicSubnet1CIDR
-        PublicSubnet2CIDR: !Ref PublicSubnet2CIDR
-        PrivateSubnet1CIDR: !Ref PrivateSubnet1CIDR
-        PrivateSubnet2CIDR: !Ref PrivateSubnet2CIDR
+        - ProjectName: !Ref ProjectName
+          Environment: !Ref Environment
+          VpcCIDR: !Ref VpcCIDR
+          PublicSubnet1CIDR: !Ref PublicSubnet1CIDR
+          PublicSubnet2CIDR: !Ref PublicSubnet2CIDR
+          PrivateSubnet1CIDR: !Ref PrivateSubnet1CIDR
+          PrivateSubnet2CIDR: !Ref PrivateSubnet2CIDR
+        - ProjectName: !Ref ProjectName
+          Environment: !Ref Environment
+          VpcCIDR: !Ref VpcCIDR
+          PublicSubnet1CIDR: !Ref PublicSubnet1CIDR
+          PublicSubnet2CIDR: !Ref PublicSubnet2CIDR
       Tags:
         - Key: Name
           Value: !Sub "${ProjectName}-${Environment}-networking"
