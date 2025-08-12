@@ -1,11 +1,11 @@
 [
   {
     "ParameterKey": "TemplatesBucket",
-    "ParameterValue": "cloudformation-templates-109698388873"
+    "ParameterValue": "vura-templates-109698388873"
   },
   {
     "ParameterKey": "ProjectName",
-    "ParameterValue": "prod-stack"
+    "ParameterValue": "vura-prod"
   },
   {
     "ParameterKey": "Environment",
@@ -41,7 +41,7 @@
   },
   {
     "ParameterKey": "EnableStorybookBucket",
-    "ParameterValue": "false"
+    "ParameterValue": "true"
   },
   {
     "ParameterKey": "EnableStagingDistribution",
@@ -53,7 +53,7 @@
   },
   {
     "ParameterKey": "EnableStorybookDistribution",
-    "ParameterValue": "false"
+    "ParameterValue": "true"
   },
   {
     "ParameterKey": "EnableBackendResources",
@@ -81,15 +81,15 @@
   },
   {
     "ParameterKey": "DBInstanceClass",
-    "ParameterValue": "db.t3.small"
+    "ParameterValue": "db.t3.micro"
   },
   {
     "ParameterKey": "DBName",
-    "ParameterValue": "appdb"
+    "ParameterValue": "vuraproddb"
   },
   {
     "ParameterKey": "DBUsername",
-    "ParameterValue": "dbadmin"
+    "ParameterValue": "prodadmin"
   },
   {
     "ParameterKey": "DBPassword",
@@ -97,7 +97,7 @@
   },
   {
     "ParameterKey": "ContainerImage",
-    "ParameterValue": "109698388873.dkr.ecr.us-east-1.amazonaws.com/prod-template-backend:latest"
+    "ParameterValue": "109698388873.dkr.ecr.us-east-1.amazonaws.com/vura-backend:latest"
   },
   {
     "ParameterKey": "ContainerPort",

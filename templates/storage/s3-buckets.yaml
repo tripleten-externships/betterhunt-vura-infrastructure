@@ -50,6 +50,7 @@ Parameters:
       - 'false'
 
 Conditions:
+  IsProductionEnvironment: !Equals [!Ref Environment, 'prod']
   CreateStagingBucket: !Equals [!Ref EnableStagingBucket, 'true']
   CreateProductionBucket: !Equals [!Ref EnableProductionBucket, 'true']
   CreateStorybookBucket: !Equals [!Ref EnableStorybookBucket, 'true']
@@ -75,7 +76,7 @@ Resources:
             AllowedOrigins: ['*']
             MaxAge: 3000
       VersioningConfiguration:
-        Status: Enabled
+        Status: !If [IsProductionEnvironment, Enabled, Suspended]
       LifecycleConfiguration:
         Rules:
           - Id: DeleteIncompleteMultipartUploads
@@ -110,7 +111,7 @@ Resources:
             AllowedOrigins: ['*']
             MaxAge: 3000
       VersioningConfiguration:
-        Status: Enabled
+        Status: !If [IsProductionEnvironment, Enabled, Suspended]
       LifecycleConfiguration:
         Rules:
           - Id: DeleteIncompleteMultipartUploads
@@ -145,7 +146,7 @@ Resources:
             AllowedOrigins: ['*']
             MaxAge: 3000
       VersioningConfiguration:
-        Status: Enabled
+        Status: !If [IsProductionEnvironment, Enabled, Suspended]
       LifecycleConfiguration:
         Rules:
           - Id: DeleteIncompleteMultipartUploads

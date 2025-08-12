@@ -1,11 +1,11 @@
 [
   {
     "ParameterKey": "TemplatesBucket",
-    "ParameterValue": "cloudformation-templates-109698388873"
+    "ParameterValue": "vura-templates-109698388873"
   },
   {
     "ParameterKey": "ProjectName",
-    "ParameterValue": "staging-stack"
+    "ParameterValue": "vura-staging"
   },
   {
     "ParameterKey": "Environment",
@@ -85,11 +85,11 @@
   },
   {
     "ParameterKey": "DBName",
-    "ParameterValue": "appdb"
+    "ParameterValue": "vurastagingdb"
   },
   {
     "ParameterKey": "DBUsername",
-    "ParameterValue": "dbadmin"
+    "ParameterValue": "stagingadmin"
   },
   {
     "ParameterKey": "DBPassword",
@@ -97,7 +97,7 @@
   },
   {
     "ParameterKey": "ContainerImage",
-    "ParameterValue": "109698388873.dkr.ecr.us-east-1.amazonaws.com/staging-template-backend:latest"
+    "ParameterValue": "109698388873.dkr.ecr.us-east-1.amazonaws.com/vura-backend:latest"
   },
   {
     "ParameterKey": "ContainerPort",

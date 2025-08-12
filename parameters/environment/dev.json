@@ -1,11 +1,11 @@
 [
   {
     "ParameterKey": "TemplatesBucket",
-    "ParameterValue": "cloudformation-templates-109698388873"
+    "ParameterValue": "vura-templates-109698388873"
   },
   {
     "ParameterKey": "ProjectName",
-    "ParameterValue": "my-app-dev"
+    "ParameterValue": "vura-dev"
   },
   {
     "ParameterKey": "Environment",

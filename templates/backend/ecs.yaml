@@ -138,7 +138,7 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub "/ecs/${ProjectName}-${Environment}"
-      RetentionInDays: 7
+      RetentionInDays: !If [IsProductionEnvironment, 7, 1]
       Tags:
         - Key: Name
           Value: !Sub "${ProjectName}-${Environment}-logs"
@@ -211,8 +211,8 @@ Resources:
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
-      Cpu: '4096'
-      Memory: '8192'
+      Cpu: '512'
+      Memory: '1024'
       ExecutionRoleArn: !Ref EcsTaskExecutionRole
       TaskRoleArn: !Ref EcsTaskRole
       ContainerDefinitions:
