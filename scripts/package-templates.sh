@@ -5,14 +5,12 @@
 
 set -e
 
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Function to print colored output
 print_status() {
     echo -e "${GREEN}[INFO]${NC} $1"
 }
@@ -29,7 +27,6 @@ print_header() {
     echo -e "${BLUE}$1${NC}"
 }
 
-# Display help
 show_help() {
     echo "Usage: $0 [bucket-name] [region]"
     echo ""
@@ -44,7 +41,6 @@ show_help() {
     echo "  $0 my-templates-bucket us-west-2"
 }
 
-# Check if help was requested
 if [[ "$1" == "--help" || "$1" == "-h" ]]; then
     show_help
     exit 0

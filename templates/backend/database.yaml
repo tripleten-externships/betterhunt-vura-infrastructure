@@ -91,7 +91,7 @@ Resources:
           Value: !Ref Environment
         - Key: Project
           Value: !Ref ProjectName
-      BackupRetentionPeriod: !If [IsProductionEnvironment, 7, 1]
+      BackupRetentionPeriod: !If [IsProductionEnvironment, 7, 0]
       DeletionProtection: !If [IsProductionEnvironment, true, false]
 
 Conditions:

@@ -176,7 +176,7 @@ Parameters:
   DesiredCount:
     Type: Number
     Description: 'Desired number of ECS tasks'
-    Default: 2
+    Default: 1
     
   # GitHub Actions configuration
   EnableGitHubActions:
@@ -191,6 +191,7 @@ Conditions:
   HasCustomDomain: !Not [!Equals [!Ref CustomDomainName, '']]
   HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
   UseCustomDomain: !And [!Condition HasCustomDomain, !Condition HasCertificate]
+  IsProductionEnvironment: !Equals [!Ref Environment, 'prod']
   CreateBackendResources: !Equals [!Ref EnableBackendResources, 'true']
   HasDBPassword: !Not [!Equals [!Ref DBPassword, '']]
   HasContainerImage: !Not [!Equals [!Ref ContainerImage, '']]
@@ -210,7 +211,10 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Condition: CreateBackendResources
     Properties:
-      TemplateURL: !Sub 'https://${TemplatesBucket}.s3.${AWS::Region}.amazonaws.com/templates/networking/vpc.yaml'
+      TemplateURL: !If 
+        - IsProductionEnvironment
+        - !Sub 'https://${TemplatesBucket}.s3.${AWS::Region}.amazonaws.com/templates/networking/vpc.yaml'
+        - !Sub 'https://${TemplatesBucket}.s3.${AWS::Region}.amazonaws.com/templates/networking/vpc-simple.yaml'
       Parameters:
         ProjectName: !Ref ProjectName
         Environment: !Ref Environment
