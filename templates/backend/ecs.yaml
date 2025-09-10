@@ -115,6 +115,41 @@ Resources:
         - Key: Project
           Value: !Ref ProjectName
 
+  # Backend S3 Bucket for KeystoneJS file storage
+  BackendS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-${Environment}-keystonejs"
+      VersioningConfiguration:
+        Status: !If [IsProductionEnvironment, Enabled, Suspended]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, POST, PUT, DELETE, HEAD]
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+          - Id: DeleteOldVersions
+            Status: !If [IsProductionEnvironment, Enabled, Disabled]
+            NoncurrentVersionExpirationInDays: 30
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-keystonejs-bucket"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
   # ECS Task Role
   EcsTaskRole:
     Type: AWS::IAM::Role
@@ -185,8 +220,8 @@ Resources:
               - s3:DeleteObject
               - s3:ListBucket
             Resource:
-              - !Sub "arn:aws:s3:::${ProjectName}-${Environment}-keystonejs"
-              - !Sub "arn:aws:s3:::${ProjectName}-${Environment}-keystonejs/*"
+              - !GetAtt BackendS3Bucket.Arn
+              - !Sub "${BackendS3Bucket.Arn}/*"
 
   EcsTaskExecutionRolePolicy:
     Type: AWS::IAM::Policy
@@ -231,7 +266,7 @@ Resources:
             - Name: PORT
               Value: !Ref ContainerPort
             - Name: S3_BUCKET_NAME
-              Value: !Sub "${ProjectName}-${Environment}-keystonejs"
+              Value: !Ref BackendS3Bucket
             - Name: S3_REGION
               Value: !Ref AWS::Region
           Secrets:
@@ -371,4 +406,16 @@ Outputs:
     Description: 'Load Balancer URL'
     Value: !Sub "http://${ApplicationLoadBalancer.DNSName}"
     Export:
-      Name: !Sub '${AWS::StackName}-LoadBalancerURL' 
+      Name: !Sub '${AWS::StackName}-LoadBalancerURL'
+
+  BackendS3BucketName:
+    Description: 'Backend S3 Bucket Name for KeystoneJS file storage'
+    Value: !Ref BackendS3Bucket
+    Export:
+      Name: !Sub '${AWS::StackName}-BackendS3BucketName'
+
+  BackendS3BucketArn:
+    Description: 'Backend S3 Bucket ARN for KeystoneJS file storage'
+    Value: !GetAtt BackendS3Bucket.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-BackendS3BucketArn' 
