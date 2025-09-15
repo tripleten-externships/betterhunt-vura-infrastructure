@@ -18,6 +18,21 @@ Parameters:
   LoadBalancerDNS:
     Type: String
     Description: 'Load balancer DNS name'
+    
+  ApiGatewayCustomDomainName:
+    Type: String
+    Description: 'Custom domain name for API Gateway (leave empty to disable)'
+    Default: ''
+    
+  ApiGatewayCertificateArn:
+    Type: String
+    Description: 'ACM Certificate ARN for custom domain (leave empty to disable)'
+    Default: ''
+
+Conditions:
+  HasCustomDomain: !And
+    - !Not [!Equals [!Ref ApiGatewayCustomDomainName, '']]
+    - !Not [!Equals [!Ref ApiGatewayCertificateArn, '']]
 
 Resources:
   # API Gateway
@@ -38,7 +53,7 @@ Resources:
           Value: !Ref ProjectName
 
   # API Root Resource
-  ApiGatewayRootResource:
+  ApiGatewayGraphQlRootResource:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref ApiGateway
@@ -46,57 +61,135 @@ Resources:
       PathPart: "api"
 
   # GraphQL Endpoint
-  ApiGatewayGraphqlResource:
+  ApiGatewayGraphQlResource:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref ApiGateway
-      ParentId: !Ref ApiGatewayRootResource
+      ParentId: !Ref ApiGatewayGraphQlRootResource
       PathPart: "graphql"
 
   # Admin Dashboard Endpoint
-  ApiGatewayAdminResource:
+  ApiGatewayAdminRootResource:
     Type: AWS::ApiGateway::Resource
     Properties:
       RestApiId: !Ref ApiGateway
-      ParentId: !Ref ApiGatewayRootResource
+      ParentId: !GetAtt ApiGateway.RootResourceId
       PathPart: "admin"
 
+  ApiGatewayAdminUiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayAdminRootResource
+      PathPart: "ui"
+
+  # Admin UI Proxy Resource (to handle all sub-paths)
+  ApiGatewayAdminUiProxyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ApiGatewayAdminUiResource
+      PathPart: "{proxy+}"
+
+
+  # Init Endpoint
+  ApiGatewayInitResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: "init"
+
   # GraphQL Method
-  ApiGatewayGraphqlMethod:
+  ApiGatewayGraphQlMethod:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ApiGatewayGraphqlResource
+      ResourceId: !Ref ApiGatewayGraphQlResource
       HttpMethod: POST
       AuthorizationType: NONE
       Integration:
         Type: HTTP_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub "http://${LoadBalancerDNS}/api/graphql"
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestParameters:
+          integration.request.header.X-Forwarded-Proto: "'https'"
+          integration.request.header.X-Forwarded-Port: "'443'"
         IntegrationResponses:
           - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,POST'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
 
-  # Admin Method (supports all HTTP methods)
-  ApiGatewayAdminMethod:
+  # Admin UI Method
+  ApiGatewayAdminUiMethod:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ApiGatewayAdminResource
+      ResourceId: !Ref ApiGatewayAdminUiResource
       HttpMethod: ANY
       AuthorizationType: NONE
       Integration:
         Type: HTTP_PROXY
         IntegrationHttpMethod: ANY
-        Uri: !Sub "http://${LoadBalancerDNS}/api/admin"
-        IntegrationResponses:
-          - StatusCode: 200
+        Uri: !Sub "http://${LoadBalancerDNS}/admin/ui"
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestParameters:
+          integration.request.header.X-Forwarded-Proto: "'https'"
+          integration.request.header.X-Forwarded-Port: "'443'"
+
+  # Admin UI Proxy Method (handles all sub-paths)
+  ApiGatewayAdminUiProxyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayAdminUiProxyResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      RequestParameters:
+        method.request.path.proxy: true
+      Integration:
+        Type: HTTP_PROXY
+        IntegrationHttpMethod: ANY
+        Uri: !Sub "http://${LoadBalancerDNS}/admin/ui/{proxy}"
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestParameters:
+          integration.request.path.proxy: method.request.path.proxy
+          integration.request.header.X-Forwarded-Proto: "'https'"
+          integration.request.header.X-Forwarded-Port: "'443'"
+
+  # Init Method
+  ApiGatewayInitMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayInitResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: HTTP_PROXY
+        IntegrationHttpMethod: ANY
+        Uri: !Sub "http://${LoadBalancerDNS}/init"
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestParameters:
+          integration.request.header.X-Forwarded-Proto: "'https'"
+          integration.request.header.X-Forwarded-Port: "'443'"
+
 
   # CORS for GraphQL Endpoint
   ApiGatewayCorsForGraphql:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ApiGatewayGraphqlResource
+      ResourceId: !Ref ApiGatewayGraphQlResource
       HttpMethod: OPTIONS
       AuthorizationType: NONE
       Integration:
@@ -116,12 +209,117 @@ Resources:
             method.response.header.Access-Control-Allow-Methods: true
             method.response.header.Access-Control-Allow-Origin: true
 
-  # CORS for Admin Dashboard
-  ApiGatewayCorsForAdmin:
+  # CORS for Admin UI
+  ApiGatewayCorsForAdminUi:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref ApiGateway
-      ResourceId: !Ref ApiGatewayAdminResource
+      ResourceId: !Ref ApiGatewayAdminUiResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,POST,PUT,DELETE'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # CORS for Admin UI Proxy
+  ApiGatewayCorsForAdminUiProxy:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayAdminUiProxyResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,POST,PUT,DELETE'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # CORS for Init Endpoint
+  ApiGatewayCorsForInit:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiGatewayInitResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET,POST,PUT,DELETE'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+
+  # Root Resource Methods for Health Check/Status
+  ApiGatewayRootMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !GetAtt ApiGateway.RootResourceId
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates:
+              application/json: '{"status": "API is running", "timestamp": "$context.requestTime"}'
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,GET'"
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: Empty
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+
+  # CORS for Root Resource
+  ApiGatewayCorsForRoot:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !GetAtt ApiGateway.RootResourceId
       HttpMethod: OPTIONS
       AuthorizationType: NONE
       Integration:
@@ -145,13 +343,49 @@ Resources:
   ApiGatewayDeployment:
     Type: AWS::ApiGateway::Deployment
     DependsOn:
-      - ApiGatewayGraphqlMethod
-      - ApiGatewayAdminMethod
+      - ApiGatewayRootMethod
+      - ApiGatewayGraphQlMethod
+      - ApiGatewayAdminUiMethod
+      - ApiGatewayAdminUiProxyMethod
+      - ApiGatewayInitMethod
+      - ApiGatewayCorsForRoot
       - ApiGatewayCorsForGraphql
-      - ApiGatewayCorsForAdmin
+      - ApiGatewayCorsForAdminUi
+      - ApiGatewayCorsForAdminUiProxy
+      - ApiGatewayCorsForInit
     Properties:
       RestApiId: !Ref ApiGateway
       StageName: !Ref Environment
+
+  # Custom Domain Name
+  ApiGatewayCustomDomain:
+    Type: AWS::ApiGateway::DomainName
+    Condition: HasCustomDomain
+    Properties:
+      DomainName: !Ref ApiGatewayCustomDomainName
+      RegionalCertificateArn: !Ref ApiGatewayCertificateArn
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      SecurityPolicy: TLS_1_2
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-custom-domain"
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # Base Path Mapping (maps custom domain to API stage)
+  ApiGatewayBasePathMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    Condition: HasCustomDomain
+    DependsOn: ApiGatewayDeployment
+    Properties:
+      DomainName: !Ref ApiGatewayCustomDomain
+      RestApiId: !Ref ApiGateway
+      Stage: !Ref Environment
+      # No BasePath means root level mapping (eliminates stage prefix)
 
 Outputs:
   ApiGatewayId:
@@ -162,18 +396,59 @@ Outputs:
 
   ApiGatewayURL:
     Description: 'API Gateway URL'
-    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/"
     Export:
       Name: !Sub '${AWS::StackName}-ApiGatewayURL'
 
-  GraphqlEndpoint:
+  GraphQlEndpoint:
     Description: 'GraphQL API Endpoint'
     Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/api/graphql"
     Export:
-      Name: !Sub '${AWS::StackName}-GraphqlEndpoint'
+      Name: !Sub '${AWS::StackName}-GraphQlEndpoint'
 
   AdminEndpoint:
-    Description: 'Admin Dashboard API Endpoint'
-    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/api/admin"
+    Description: 'Keystone Admin UI Endpoint'
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/admin/ui"
     Export:
-      Name: !Sub '${AWS::StackName}-AdminEndpoint' 
+      Name: !Sub '${AWS::StackName}-AdminEndpoint'
+
+  InitEndpoint:
+    Description: 'Keystone Initialization Endpoint'
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/init"
+    Export:
+      Name: !Sub '${AWS::StackName}-InitEndpoint'
+
+  CustomDomain:
+    Condition: HasCustomDomain
+    Description: 'Custom Domain Name'
+    Value: !Ref ApiGatewayCustomDomainName
+    Export:
+      Name: !Sub '${AWS::StackName}-CustomDomain'
+
+  CustomDomainTarget:
+    Condition: HasCustomDomain
+    Description: 'API Gateway Regional Domain Name for DNS CNAME'
+    Value: !GetAtt ApiGatewayCustomDomain.RegionalDomainName
+    Export:
+      Name: !Sub '${AWS::StackName}-CustomDomainTarget'
+
+  CustomGraphQlEndpoint:
+    Condition: HasCustomDomain
+    Description: 'GraphQL API Endpoint via Custom Domain'
+    Value: !Sub "https://${ApiGatewayCustomDomainName}/api/graphql"
+    Export:
+      Name: !Sub '${AWS::StackName}-CustomGraphQlEndpoint'
+
+  CustomAdminEndpoint:
+    Condition: HasCustomDomain
+    Description: 'Keystone Admin UI Endpoint via Custom Domain'
+    Value: !Sub "https://${ApiGatewayCustomDomainName}/admin/ui"
+    Export:
+      Name: !Sub '${AWS::StackName}-CustomAdminEndpoint'
+
+  CustomInitEndpoint:
+    Condition: HasCustomDomain
+    Description: 'Keystone Initialization Endpoint via Custom Domain'
+    Value: !Sub "https://${ApiGatewayCustomDomainName}/init"
+    Export:
+      Name: !Sub '${AWS::StackName}-CustomInitEndpoint'
