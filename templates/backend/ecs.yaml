@@ -27,7 +27,7 @@ Parameters:
   DesiredCount:
     Type: Number
     Description: 'Desired number of ECS tasks'
-    Default: 2
+    Default: 1
     
   PublicSubnet1Id:
     Type: String
@@ -318,13 +318,13 @@ Resources:
       TargetType: ip
       VpcId: !Ref VpcId
       HealthCheckPath: /init
-      HealthCheckIntervalSeconds: 60
-      HealthCheckTimeoutSeconds: 30
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
-      UnhealthyThresholdCount: 5
+      UnhealthyThresholdCount: 3
       HealthCheckPort: traffic-port
       Matcher:
-        HttpCode: 200,201,202,204
+        HttpCode: 200,201,202,204,302
       TargetGroupAttributes:
         - Key: deregistration_delay.timeout_seconds
           Value: '30'
@@ -395,6 +395,12 @@ Outputs:
     Value: !Ref EcsService
     Export:
       Name: !Sub '${AWS::StackName}-EcsServiceName'
+
+  EcsTaskDefinitionArn:
+    Description: 'ECS Task Definition ARN'
+    Value: !Ref EcsTaskDefinition
+    Export:
+      Name: !Sub '${AWS::StackName}-EcsTaskDefinitionArn'
 
   LoadBalancerDNS:
     Description: 'Load Balancer DNS Name'

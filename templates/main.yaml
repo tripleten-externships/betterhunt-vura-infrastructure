@@ -54,6 +54,16 @@ Parameters:
     Description: 'ACM certificate ARN for custom domain (required if CustomDomainName is specified)'
     Default: ''
 
+  ApiGatewayCustomDomainName:
+    Type: String
+    Description: 'Custom domain name for API Gateway (optional)'
+    Default: ''
+
+  ApiGatewayCertificateArn:
+    Type: String
+    Description: 'ACM certificate ARN for custom domain (required if CustomDomainName is specified)'
+    Default: ''
+
   # S3 bucket configuration
   EnableStagingBucket:
     Type: String
@@ -190,6 +200,8 @@ Parameters:
 Conditions:
   HasCustomDomain: !Not [!Equals [!Ref CustomDomainName, '']]
   HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
+  HasApiGatewayCustomDomain: !Not [!Equals [!Ref ApiGatewayCustomDomainName, '']]
+  HasApiGatewayCertificate: !Not [!Equals [!Ref ApiGatewayCertificateArn, '']]
   UseCustomDomain: !And [!Condition HasCustomDomain, !Condition HasCertificate]
   IsProductionEnvironment: !Equals [!Ref Environment, 'prod']
   CreateBackendResources: !Equals [!Ref EnableBackendResources, 'true']
@@ -374,6 +386,8 @@ Resources:
         ProjectName: !Ref ProjectName
         Environment: !Ref Environment
         LoadBalancerDNS: !GetAtt EcsStack.Outputs.LoadBalancerDNS
+        ApiGatewayCustomDomainName: !Ref ApiGatewayCustomDomainName
+        ApiGatewayCertificateArn: !Ref ApiGatewayCertificateArn
       Tags:
         - Key: Name
           Value: !Sub "${ProjectName}-${Environment}-api-gateway"
@@ -440,12 +454,12 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-ApiEndpoint'
 
-  GraphqlEndpoint:
+  GraphQlEndpoint:
     Condition: CreateEcsService
     Description: 'GraphQL API Endpoint'
-    Value: !GetAtt ApiGatewayStack.Outputs.GraphqlEndpoint
+    Value: !GetAtt ApiGatewayStack.Outputs.GraphQlEndpoint
     Export:
-      Name: !Sub '${AWS::StackName}-GraphqlEndpoint'
+      Name: !Sub '${AWS::StackName}-GraphQlEndpoint'
 
   AdminEndpoint:
     Condition: CreateEcsService
@@ -468,3 +482,38 @@ Outputs:
     Value: !GetAtt GithubActionsStack.Outputs.GitHubActionsSecretAccessKey
     Export:
       Name: !Sub '${AWS::StackName}-GitHubActionsSecretAccessKey' 
+  
+  ApiGatewayCustomDomainName:
+    Condition: HasApiGatewayCustomDomain
+    Description: 'Custom Domain Name'
+    Value: !GetAtt ApiGatewayStack.Outputs.CustomDomain
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiGatewayCustomDomain'
+
+  CustomDomainTarget:
+    Condition: HasApiGatewayCustomDomain
+    Description: 'API Gateway Regional Domain Name for DNS CNAME'
+    Value: !GetAtt ApiGatewayStack.Outputs.CustomDomainTarget
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiGatewayCustomDomainTarget'
+
+  CustomGraphQlEndpoint:
+    Condition: HasApiGatewayCustomDomain
+    Description: 'GraphQL API Endpoint via Custom Domain'
+    Value: !GetAtt ApiGatewayStack.Outputs.CustomGraphQlEndpoint
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiGatewayCustomGraphQlEndpoint'
+
+  CustomAdminEndpoint:
+    Condition: HasApiGatewayCustomDomain
+    Description: 'Keystone Admin UI Endpoint via Custom Domain'
+    Value: !GetAtt ApiGatewayStack.Outputs.CustomAdminEndpoint
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiGatewayCustomAdminEndpoint'
+
+  CustomInitEndpoint:
+    Condition: HasApiGatewayCustomDomain
+    Description: 'Keystone Initialization Endpoint via Custom Domain'
+    Value: !GetAtt ApiGatewayStack.Outputs.CustomInitEndpoint
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiGatewayCustomInitEndpoint'

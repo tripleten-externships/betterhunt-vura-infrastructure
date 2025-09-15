@@ -475,7 +475,7 @@ Each environment is deployed as its own CloudFormation stack with:
 **API Gateway**:
 - REST API with regional endpoint
 - GraphQL endpoint (/api/graphql)
-- Admin dashboard endpoint (/api/admin)
+- Admin dashboard endpoint (/admin/ui)
 - CORS configuration for cross-origin requests
 
 **IAM Resources**:

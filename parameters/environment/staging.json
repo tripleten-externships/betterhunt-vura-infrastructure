@@ -102,5 +102,13 @@
   {
     "ParameterKey": "EnableGitHubActions",
     "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "ApiGatewayCustomDomainName",
+    "ParameterValue": "api-vura.net"
+  },
+  {
+    "ParameterKey": "ApiGatewayCertificateArn",
+    "ParameterValue": "arn:aws:acm:us-east-1:109698388873:certificate/838b14d4-aba6-4bcd-a34e-290457c7ea40"
   }
 ] 
